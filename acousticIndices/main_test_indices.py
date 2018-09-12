@@ -24,7 +24,7 @@ if __name__ == '__main__':
     yml_file = './config/config_014_butter.yaml'
 
     # Read signal -------------------------------------
-    filename = './audio_files/BALMER-02_0_20150620_0445.wav'
+    filename = './data/BALMER-02_0_20150620_0445.wav'
 
 
     file = AudioFile(filename, verbose=True)
