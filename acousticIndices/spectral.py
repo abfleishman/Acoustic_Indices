@@ -182,7 +182,9 @@ def ADI(spectro, freq_band_Hz,  max_freq=10000, db_threshold=-50, freq_step=1000
     spec_ADI = 20*np.log10(spectro/np.max(spectro))
     spec_ADI_bands = [spec_ADI[bands_bin[k]:bands_bin[k]+bands_bin[1],] for k in range(len(bands_bin))]
 
-    values = [np.sum(spec_ADI_bands[k]>db_threshold)/float(spec_ADI_bands[k].size) for k in range(len(bands_bin))]
+    #TODO is this valid?
+    bin_k = filter(lambda k: spec_ADI_bands[k].size>0, range(len(bands_bin)))
+    values = [np.sum(spec_ADI_bands[k]>db_threshold)/float(spec_ADI_bands[k].size) for k in bin_k]
 
     # Shannon Entropy of the values
     #shannon = - sum([y * np.log(y) for y in values]) / len(values)  # Follows the R code. But log is generally log2 for Shannon entropy. Equivalent to shannon = False in soundecology.
@@ -372,7 +374,7 @@ def main(args):
                         windowType='hamming', centered=False, normalized=True)
     j_bin = 5 * filtered_audio.samplerate // 512  # transform j_bin in samples
     main_value, temporal_values = ACI(spectro_norm, j_bin)
-    print("ACI: ", main_value, temporal_values)
+    print("ACI: ", np.average(temporal_values))
 
     # Acoustic Diversity
     freq_band_Hz = 10000 // 1000
@@ -404,7 +406,7 @@ if __name__ == '__main__':
     parser.add_argument("--chromagram", action="store_true", help="Show chromagram")
     parser.add_argument("--spectrogram", action="store_true", help="Show spectrogram")
     parser.add_argument("--recordactivity", action="store_true", help="Record detected sounds to wavs")
-    parser.add_argument('-t', "--time", type=float, help="Time (seconds) to record", default=10.0)
+    parser.add_argument('-t', "--time", type=float, help="Time (seconds) to record", default=3.0)
     args = parser.parse_args()
 
     main(args)
