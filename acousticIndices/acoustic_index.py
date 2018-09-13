@@ -109,6 +109,7 @@ class AudioFile(object):
                 if verbose:
                     print('\tThe audio file contains more than one channel. Only the channel', default_channel, 'will be used.')
                 sig=sig[:, default_channel] # Assign default channel
+            self.samplerate = sr
             self.sr = sr
             self.sig_int = sig
             self.sig_float = pcm2float(sig,dtype='float64')
