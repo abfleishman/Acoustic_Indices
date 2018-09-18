@@ -1,0 +1,4 @@
+numpy>=1.5.0
+scipy>=0.9.0
+cached-property>=1.0.0
+PyAudio>=0.2.6

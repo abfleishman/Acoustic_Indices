@@ -20,8 +20,6 @@ __status__ = "Development"
 
 from scipy import signal, fftpack
 import numpy as np
-import matplotlib.pyplot as plt
-
 
 def TH(file, integer=True):
     """
