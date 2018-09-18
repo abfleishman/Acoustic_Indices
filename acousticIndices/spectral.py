@@ -1,33 +1,12 @@
-#!/usr/bin/env python
-
-"""
-    Set of functions to compute acoustic indices in the framework of Soundscape Ecology.
-
-    Some features are inspired or ported from those proposed in:
-        - seewave R package (http://rug.mnhn.fr/seewave/) / Jerome Sueur, Thierry Aubin and  Caroline Simonis
-        - soundecology R package (http://cran.r-project.org/web/packages/soundecology/index.html) / Luis J. Villanueva-Rivera and Bryan C. Pijanowski
-
-    This file use an object oriented type for audio files described in the file "acoustic_index.py".
-
-
-
-"""
-
-__author__ = "Patrice Guyot"
-__version__ = "0.3"
-__credits__ = ["Patrice Guyot", "Alice Eldridge", "Mika Peck"]
-__email__ = ["guyot.patrice@gmail.com", "alicee@sussex.ac.uk", "m.r.peck@sussex.ac.uk"]
-__status__ = "Development"
-
-
-from scipy import signal, fftpack
 import numpy as np
-import matplotlib.pyplot as plt
+import pyaudio
+from scipy import signal
+
+from acousticIndices.index import gini
+from acousticIndices.stream import AudioChunk
 
 
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_spectrogram(file, windowLength: int=512, windowHop= 256, scale_audio=True, square=True, windowType='hanning', centered=False, normalized = False ):
+def spectrogram(file, windowLength: int=512, windowHop= 256, scale_audio=True, square=True, windowType='hanning', centered=False, normalized = False ):
     """
     Compute a spectrogram of an audio signal.
     Return a list of list of values as the spectrogram, and a list of frequencies.
@@ -47,9 +26,9 @@ def compute_spectrogram(file, windowLength: int=512, windowHop= 256, scale_audio
     """
 
     if scale_audio:
-        sig = file.sig_float # use signal with float between -1 and 1
+        sig = file.as_float # use signal with float between -1 and 1
     else:
-        sig = file.sig_int # use signal with integers
+        sig = file.as_int # use signal with integers
 
 
     W = signal.get_window(windowType, windowLength, fftbins=False)
@@ -70,17 +49,18 @@ def compute_spectrogram(file, windowLength: int=512, windowHop= 256, scale_audio
     spectro=np.transpose(spectro) # set the spectro in a friendly way
 
     if normalized:
-        spectro = spectro/np.max(spectro) # set the maximum value to 1 y
+        with np.errstate(divide='raise', invalid='raise'):
+            try:
+                spectro = spectro/np.max(spectro) # set the maximum value to 1 y
+            except Exception as e:
+                pass
+
 
     frequencies = [e * file.niquist / float(windowLength / 2) for e in range(windowLength // 2)] # vector of frequency<-bin in the spectrogram
     return spectro, frequencies
 
 
-
-
-
-#-----------------------------------------------------------------------------
-def compute_ACI(spectro,j_bin):
+def ACI(spectro,j_bin):
     """
     Compute the Acoustic Complexity Index from the spectrogram of an audio signal.
 
@@ -106,11 +86,7 @@ def compute_ACI(spectro,j_bin):
     return main_value, temporal_values # return main (global) value, temporal values
 
 
-
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_BI(spectro, frequencies, min_freq = 2000, max_freq = 8000):
+def BI(spectro, frequencies, min_freq = 2000, max_freq = 8000):
     """
     Compute the Bioacoustic Index from the spectrogram of an audio signal.
     In this code, the Bioacoustic Index correspond to the area under the mean spectre (in dB) minus the minimum frequency value of this mean spectre.
@@ -140,8 +116,8 @@ def compute_BI(spectro, frequencies, min_freq = 2000, max_freq = 8000):
 
     return area
 
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_SH(spectro):
+
+def SH(spectro):
     """
     Compute Spectral Entropy of Shannon from the spectrogram of an audio signal.
 
@@ -157,83 +133,7 @@ def compute_SH(spectro):
     return main_value
 
 
-
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_TH(file, integer=True):
-    """
-    Compute Temporal Entropy of Shannon from an audio signal.
-
-    file: an instance of the AudioFile class.
-    integer: if set as True, the Temporal Entropy will be compute on the Integer values of the signal. If not, the signal will be set between -1 and 1.
-
-    Ported from the seewave R package.
-    """
-    if integer:
-        sig=file.sig_int
-    else:
-        sig=file.sig_float
-
-    #env = abs(signal.hilbert(sig)) # Modulo of the Hilbert Envelope
-    env = abs(signal.hilbert(sig, fftpack.helper.next_fast_len(len(sig)))) # Modulo of the Hilbert Envelope, computed with the next fast length window
-
-    env = env / np.sum(env)  # Normalization
-    N = len(env)
-    return - sum([y * np.log2(y) for y in env]) / np.log2(N)
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_NDSI(file, windowLength = 1024, anthrophony=[1000,2000], biophony=[2000,11000]):
-    """
-    Compute Normalized Difference Sound Index from an audio signal.
-    This function compute an estimate power spectral density using Welch's method.
-
-    Reference: Kasten, Eric P., Stuart H. Gage, Jordan Fox, and Wooyeong Joo. 2012. The Remote Environ- mental Assessment Laboratory's Acoustic Library: An Archive for Studying Soundscape Ecology. Ecological Informatics 12: 50-67.
-
-    windowLength: the length of the window for the Welch's method.
-    anthrophony: list of two values containing the minimum and maximum frequencies (in Hertz) for antrophony.
-    biophony: list of two values containing the minimum and maximum frequencies (in Hertz) for biophony.
-
-    Inspired by the seewave R package, the soundecology R package and the original matlab code from the authors.
-    """
-
-    #frequencies, pxx = signal.welch(file.sig_float, fs=file.sr, window='hamming', nperseg=windowLength, noverlap=windowLength/2, nfft=windowLength, detrend=False, return_onesided=True, scaling='density', axis=-1) # Estimate power spectral density using Welch's method
-    # TODO change of detrend for apollo
-    frequencies, pxx = signal.welch(file.sig_float, fs=file.sr, window='hamming', nperseg=windowLength, noverlap=windowLength/2, nfft=windowLength, detrend='constant', return_onesided=True, scaling='density', axis=-1) # Estimate power spectral density using Welch's method
-    avgpow = pxx * frequencies[1] # use a rectangle approximation of the integral of the signal's power spectral density (PSD)
-    #avgpow = avgpow / np.linalg.norm(avgpow, ord=2) # Normalization (doesn't change the NDSI values. Slightly differ from the matlab code).
-
-    min_anthro_bin=np.argmin([abs(e - anthrophony[0]) for e in frequencies])  # min freq of anthrophony in samples (or bin) (closest bin)
-    max_anthro_bin=np.argmin([abs(e - anthrophony[1]) for e in frequencies])  # max freq of anthrophony in samples (or bin)
-    min_bio_bin=np.argmin([abs(e - biophony[0]) for e in frequencies])  # min freq of biophony in samples (or bin)
-    max_bio_bin=np.argmin([abs(e - biophony[1]) for e in frequencies])  # max freq of biophony in samples (or bin)
-
-    anthro = np.sum(avgpow[min_anthro_bin:max_anthro_bin])
-    bio = np.sum(avgpow[min_bio_bin:max_bio_bin])
-
-    ndsi = (bio - anthro) / (bio + anthro)
-    return ndsi
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def gini(values):
-    """
-    Compute the Gini index of values.
-
-    values: a list of values
-
-    Inspired by http://mathworld.wolfram.com/GiniCoefficient.html and http://en.wikipedia.org/wiki/Gini_coefficient
-    """
-    y = sorted(values)
-    n = len(y)
-    G = np.sum([i*j for i,j in zip(y,list(range(1,n+1)))])
-    G = 2 * G / np.sum(y) - (n+1)
-    return G/n
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_AEI(spectro, freq_band_Hz, max_freq=10000, db_threshold=-50, freq_step=1000):
+def AEI(spectro, freq_band_Hz, max_freq=10000, db_threshold=-50, freq_step=1000):
     """
     Compute Acoustic Evenness Index of an audio signal.
 
@@ -258,8 +158,8 @@ def compute_AEI(spectro, freq_band_Hz, max_freq=10000, db_threshold=-50, freq_st
 
     return gini(values)
 
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_ADI(spectro, freq_band_Hz,  max_freq=10000, db_threshold=-50, freq_step=1000):
+
+def ADI(spectro, freq_band_Hz,  max_freq=10000, db_threshold=-50, freq_step=1000):
     """
     Compute Acoustic Diversity Index.
 
@@ -282,7 +182,9 @@ def compute_ADI(spectro, freq_band_Hz,  max_freq=10000, db_threshold=-50, freq_s
     spec_ADI = 20*np.log10(spectro/np.max(spectro))
     spec_ADI_bands = [spec_ADI[bands_bin[k]:bands_bin[k]+bands_bin[1],] for k in range(len(bands_bin))]
 
-    values = [np.sum(spec_ADI_bands[k]>db_threshold)/float(spec_ADI_bands[k].size) for k in range(len(bands_bin))]
+    #TODO is this valid?
+    bin_k = filter(lambda k: spec_ADI_bands[k].size>0, range(len(bands_bin)))
+    values = [np.sum(spec_ADI_bands[k]>db_threshold)/float(spec_ADI_bands[k].size) for k in bin_k]
 
     # Shannon Entropy of the values
     #shannon = - sum([y * np.log(y) for y in values]) / len(values)  # Follows the R code. But log is generally log2 for Shannon entropy. Equivalent to shannon = False in soundecology.
@@ -301,52 +203,7 @@ def compute_ADI(spectro, freq_band_Hz,  max_freq=10000, db_threshold=-50, freq_s
     return np.sum([-i/ np.sum(values) * np.log(i / np.sum(values))  for i in values])
 
 
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_zcr(file, windowLength=512, windowHop= 256):
-    """
-    Compute the Zero Crossing Rate of an audio signal.
-
-    file: an instance of the AudioFile class.
-    windowLength: size of the sliding window (samples)
-    windowHop: size of the lag window (samples)
-
-    return: a list of values (number of zero crossing for each window)
-    """
-
-
-    sig = file.sig_int # Signal on integer values
-
-    times = list(range(0, len(sig)- windowLength +1, windowHop))
-    frames = [sig[i:i+windowLength] for i in times]
-    return [len(np.where(np.diff(np.signbit(x)))[0])/float(windowLength) for x in frames]
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_rms_energy(file, windowLength=512, windowHop=256, integer=False):
-    """
-    Compute the RMS short time energy.
-
-    file: an instance of the AudioFile class.
-    windowLength: size of the sliding window (samples)
-    windowHop: size of the lag window (samples)
-    integer: if set as True, the Temporal Entropy will be compute on the Integer values of the signal. If not, the signal will be set between -1 and 1.
-
-    return: a list of values (rms energy for each window)
-    """
-    if integer:
-        sig=file.sig_int
-    else:
-        sig=file.sig_float
-
-    times = list(range(0, len(sig) - windowLength+1, windowHop))
-    frames = [sig[i:i + windowLength] for i in times]
-    return [np.sqrt(sum([ x**2 for x in frame ]) / windowLength) for frame in frames]
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_spectral_centroid(spectro, frequencies):
+def spectral_centroid(spectro, frequencies):
     """
     Compute the spectral centroid of an audio signal from its spectrogram.
 
@@ -358,89 +215,6 @@ def compute_spectral_centroid(spectro, frequencies):
 
 
     return centroid
-
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_wave_SNR(file, frame_length_e=512, min_DB=-60, window_smoothing_e=5, activity_threshold_dB=3, hist_number_bins = 100, dB_range = 10, N = 0):
-    """
-
-    Computes indices from the Signal to Noise Ratio of a waveform.
-
-    file: an instance of the AudioFile class.
-    window_smoothing_e: odd number for sliding mean smoothing of the histogram (can be 3, 5 or 7)
-    hist_number_bins - Number of columns in the histogram
-    dB_range - dB range to consider in the histogram
-    N: The decibel threshold for the waveform is given by the modal intensity plus N times the standard deviation. Higher values of N will remove more energy from the waveform.
-
-    Output:
-        Signal-to-noise ratio (SNR): the decibel difference between the maximum envelope amplitude in any minute segment and the background noise.
-        Acoustic activity: the fraction of frames within a one minute segment where the signal envelope is more than 3 dB above the level of background noise
-        Count of acoustic events: the number of times that the signal envelope crosses the 3 dB threshold
-        Average duration of acoustic events: an acoustic event is a portion of recordingwhich startswhen the signal envelope crosses above the 3 dB threshold and ends when it crosses belowthe 3 dB threshold.
-
-    Ref: Towsey, Michael W. (2013) Noise removal from wave-forms and spectro- grams derived from natural recordings of the environment.
-    Towsey, Michael (2013), Noise Removal from Waveforms and Spectrograms Derived from Natural Recordings of the Environment. Queensland University of Technology, Brisbane.
-    """
-
-
-
-    times = list(range(0, len(file.sig_int)-frame_length_e+1, frame_length_e))
-    wave_env = 20*np.log10([np.max(abs(file.sig_float[i : i + frame_length_e])) for i in times])
-
-    minimum = np.max((np.min(wave_env), min_DB)) # If the minimum value is less than -60dB, the minimum is set to -60dB
-
-    hist, bin_edges = np.histogram(wave_env, range=(minimum, minimum + dB_range), bins=hist_number_bins, density=False)
-
-
-    # hist_smooth = ([np.mean(hist[i - window_smoothing_e/2: i + window_smoothing_e/2]) for i in range(window_smoothing_e/2, len(hist) - window_smoothing_e/2)])
-    hist_steps = np.linspace(window_smoothing_e / 2, len(hist) - window_smoothing_e / 2, num=len(hist) - window_smoothing_e + 1)
-    hist_smooth = ([np.mean(hist[int(i - window_smoothing_e / 2): int(i + window_smoothing_e / 2)]) for i in hist_steps])
-    hist_smooth = np.concatenate((np.zeros(window_smoothing_e//2), hist_smooth, np.zeros(window_smoothing_e//2)))
-
-    modal_intensity = np.argmax(hist_smooth)
-
-    if N>0:
-        count_thresh = 68 * sum(hist_smooth) / 100
-        count = hist_smooth[modal_intensity]
-        index_bin = 1
-        while count < count_thresh:
-            if modal_intensity + index_bin <= len(hist_smooth):
-                count = count + hist_smooth[modal_intensity + index_bin]
-            if modal_intensity - index_bin >= 0:
-                count = count + hist_smooth[modal_intensity - index_bin]
-            index_bin += 1
-        thresh = np.min((hist_number_bins, modal_intensity + N * index_bin))
-        background_noise = bin_edges[thresh]
-    elif N==0:
-        background_noise = bin_edges[modal_intensity]
-
-    SNR = np.max(wave_env) - background_noise
-    SN = np.array([frame-background_noise-activity_threshold_dB for frame in wave_env])
-    acoustic_activity = np.sum([i > 0 for i in SN])/float(len(SN))
-
-
-    # Compute acoustic events
-    start_event = [n[0] for n in np.argwhere((SN[:-1] < 0) & (SN[1:] > 0))]
-    end_event = [n[0] for n in np.argwhere((SN[:-1] > 0) & (SN[1:] < 0))]
-    if len(start_event)!=0 and len(end_event)!=0:
-        if start_event[0]<end_event[0]:
-            events=list(zip(start_event, end_event))
-        else:
-            events=list(zip(end_event, start_event))
-        count_acoustic_events = len(events)
-        average_duration_e = np.mean([end - begin for begin,end in events] )
-        average_duration_s = average_duration_e * file.duration / float(len(SN))
-    else:
-        count_acoustic_events = 0
-        average_duration_s = 0
-
-
-    dict = {'SNR' : SNR, 'Acoustic_activity' : acoustic_activity, 'Count_acoustic_events' : count_acoustic_events, 'Average_duration' : average_duration_s}
-    return dict
-
-
-
 
 #-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def remove_noiseInSpectro(spectro, histo_relative_size=8, window_smoothing=5, N=0.1, dB=False, plot=False):
@@ -528,8 +302,7 @@ def remove_noiseInSpectro(spectro, histo_relative_size=8, window_smoothing=5, N=
     return new_spec
 
 
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_NB_peaks(spectro, frequencies, freqband = 200, normalization= True, slopes=(0.01,0.01)):
+def NB_peaks(spectro, frequencies, freqband = 200, normalization= True, slopes=(0.01,0.01)):
     """
 
     Counts the number of major frequency peaks obtained on a mean spectrum.
@@ -571,3 +344,66 @@ def compute_NB_peaks(spectro, frequencies, freqband = 200, normalization= True, 
 
     return len(peaks_indices)
 
+def main(args):
+
+    pa = pyaudio.PyAudio()
+    FORMAT = pyaudio.paInt16
+
+    midTermBufferSize = int(args.samplingrate * args.blocksize)
+
+    stream = pa.open(format=FORMAT,
+                 channels=1,
+                 rate=args.samplingrate,
+                 input=True,
+                 frames_per_buffer=midTermBufferSize)
+    audio_chunk = AudioChunk.from_pyaudio_stream(stream, args.time)
+
+    # Filtering
+    freq_filter = 300
+    Wn = freq_filter / float(audio_chunk.niquist)
+    order = 8
+    [b, a] = signal.butter(order, Wn, btype='highpass')
+    filter_fn = lambda x: signal.filtfilt(b, a, x)
+    filtered_audio = audio_chunk.filter(filter_fn)
+
+    # Acoustic Complexity
+    spectro_norm, _ = spectrogram(filtered_audio, windowLength=512, windowHop=512, scale_audio=False, square=False,
+                        windowType='hamming', centered=False, normalized=True)
+    j_bin = 5 * filtered_audio.samplerate // 512  # transform j_bin in samples
+    main_value, temporal_values = ACI(spectro_norm, j_bin)
+    print("ACI: ", np.average(temporal_values))
+
+    # Acoustic Diversity
+    freq_band_Hz = 10000 // 1000
+    windowLength = filtered_audio.samplerate // freq_band_Hz
+    spectro, _ = spectrogram(filtered_audio, windowLength=windowLength, windowHop=windowLength, scale_audio=True,
+                                     square=False, windowType='hanning', centered=False, normalized=False)
+    main_value = ADI(spectro, freq_band_Hz, max_freq=10000, db_threshold=-50, freq_step=1000)
+    print("ADI: ", main_value)
+
+    # Acoustic Evenness
+    main_value = AEI(spectro, freq_band_Hz, max_freq=10000, db_threshold=-50, freq_step=1000)
+    print("AEI: ", main_value)
+
+    # Spectral Entropy (Shannon)
+    spectro, _ = spectrogram(filtered_audio, windowLength=512, windowHop=256, scale_audio=True, square=False,
+                        windowType='hamming', centered=False, normalized=False)
+    main_value = SH(spectro)
+    print("Entropy: ", main_value)
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Real time audio analysis")
+    parser.add_argument("-bs", "--blocksize", type=float, choices=[0.1, 0.2, 0.3, 0.4, 0.5], default=0.30,
+                        help="Recording block size")
+    parser.add_argument("-fs", "--samplingrate", type=int, choices=[4000, 8000, 16000, 32000, 44100], default=44100,
+                        help="Recording block size")
+    parser.add_argument("--chromagram", action="store_true", help="Show chromagram")
+    parser.add_argument("--spectrogram", action="store_true", help="Show spectrogram")
+    parser.add_argument("--recordactivity", action="store_true", help="Record detected sounds to wavs")
+    parser.add_argument('-t', "--time", type=float, help="Time (seconds) to record", default=3.0)
+    args = parser.parse_args()
+
+    main(args)
