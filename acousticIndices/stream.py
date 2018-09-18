@@ -1,14 +1,13 @@
 import struct
 from datetime import datetime
-import numpy as np
 from multiprocessing import Process
 
-from cached_property import cached_property
-import pyaudio
+import numpy as np
 from scipy.io.wavfile import read as wavread
+import pyaudio
+from cached_property import cached_property
 
 from acousticIndices.convert import pcm2float, float2pcm
-
 
 def stream_to_np(frame):
     block = frame
