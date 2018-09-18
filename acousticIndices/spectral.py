@@ -351,9 +351,6 @@ def main(args):
 
     midTermBufferSize = int(args.samplingrate * args.blocksize)
 
-    print(midTermBufferSize)
-
-
     stream = pa.open(format=FORMAT,
                  channels=1,
                  rate=args.samplingrate,

@@ -7,7 +7,7 @@
         - seewave R package (http://rug.mnhn.fr/seewave/) / Jerome Sueur, Thierry Aubin and  Caroline Simonis
         - soundecology R package (http://cran.r-project.org/web/packages/soundecology/index.html) / Luis J. Villanueva-Rivera and Bryan C. Pijanowski
 
-    This file use an object oriented type for audio files described in the file "acoustic_index.py".
+    This file use an object oriented type for audio files described in the file "stream.py".
 
 """
 

@@ -7,7 +7,8 @@ from cached_property import cached_property
 import pyaudio
 from scipy.io.wavfile import read as wavread
 
-from acousticIndices.acoustic_index import pcm2float, float2pcm
+from acousticIndices.convert import pcm2float, float2pcm
+
 
 def stream_to_np(frame):
     block = frame
