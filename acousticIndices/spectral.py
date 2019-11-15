@@ -5,7 +5,6 @@ from scipy import signal
 from acousticIndices.index import gini
 from acousticIndices.stream import AudioChunk
 
-
 def spectrogram(file, windowLength: int=512, windowHop= 256, scale_audio=True, square=True, windowType='hanning', centered=False, normalized = False ):
     """
     Compute a spectrogram of an audio signal.

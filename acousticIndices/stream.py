@@ -3,7 +3,7 @@ from datetime import datetime
 from multiprocessing import Process
 
 import numpy as np
-from scipy.io.wavfile import read as wavread
+from scipy.io.wavfile import read as wavread, write as wavwrite
 import pyaudio
 from cached_property import cached_property
 
@@ -95,6 +95,9 @@ class AudioChunk:
             print("Error: can\'t read the audio file:", file_path)
 
         return cls(sr, sig)
+
+    def save(self, filename):
+        wavwrite(filename, self.samplerate, self.data)
 
 class AudioCapture(Process):
 
