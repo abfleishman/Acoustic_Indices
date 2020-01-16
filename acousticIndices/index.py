@@ -21,7 +21,7 @@ __status__ = "Development"
 from scipy import signal, fftpack
 import numpy as np
 
-def TH(file, integer=True):
+def TH(sig, integer=True):
     """
     Compute Temporal Entropy of Shannon from an audio signal.
 
@@ -30,11 +30,6 @@ def TH(file, integer=True):
 
     Ported from the seewave R package.
     """
-    if integer:
-        sig=file.sig_int
-    else:
-        sig=file.sig_float
-
     #env = abs(signal.hilbert(sig)) # Modulo of the Hilbert Envelope
     env = abs(signal.hilbert(sig, fftpack.helper.next_fast_len(len(sig)))) # Modulo of the Hilbert Envelope, computed with the next fast length window
 

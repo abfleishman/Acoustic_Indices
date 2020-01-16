@@ -64,6 +64,10 @@ class AudioChunk:
         return cls(samplerate, np_array)
 
     @classmethod
+    def from_np_float_array(cls, np_array, samplerate=44100):
+        return cls(samplerate, float2pcm(np_array))
+
+    @classmethod
     def from_pyaudio_stream(cls, stream, seconds):
         frames_per_buffer = 8820
 
